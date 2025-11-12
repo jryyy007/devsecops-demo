@@ -1,42 +1,46 @@
+// Jenkinsfile for DevSecOps Demo Project
+// Author: You
+// Purpose: CI/CD pipeline with Maven, Nexus, SonarQube, Docker, and Email notifications
+
 pipeline {
     agent any
 
     environment {
-        // Nexus config
-        NEXUS_URL = 'http://localhost:8081'              // your Nexus URL
-        NEXUS_REPO = 'vprofile-release'                 // repository in Nexus
-        NEXUS_CREDENTIALS = 'nexus-login'               // Jenkins global credentials ID for Nexus
+        // Define all credentials stored in Jenkins
+        NEXUS_CREDENTIALS = 'nexus-login'
+        NEXUS_URL = 'http://localhost:8081'
+        NEXUS_REPO = 'vprofile-release'
 
-        // SonarQube
-        SONARQUBE = 'sonar-server'                      // Jenkins SonarQube server ID
-        SONAR_TOKEN = 'sonar-token'                     // Jenkins global secret text ID for SonarQube
+        SONAR_TOKEN = 'sonar-token'
+        SONAR_URL = 'http://localhost:9000'
 
-        // Email
-        EMAIL_TO = 'jridim64@gmail.com'
-        EMAIL_FROM = 'jridim64@gmail.com'
+        EMAIL_CREDENTIALS = 'mail-cred'
+        EMAIL_RECIPIENTS = 'jridim64@gmail.com'
 
-        // Docker
-        DOCKER_IMAGE = 'myapp:latest'
+        DOCKER_IMAGE_NAME = 'myapp-demo'
+        DOCKER_TAG = 'latest'
     }
 
-    tools {
-        // Maven installation name configured in Jenkins
-        maven 'MAVEN3'
-        jdk 'JDK21'
+    options {
+        // Keep build history short for local VM
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        // Abort builds that take too long
+        timeout(time: 30, unit: 'MINUTES')
     }
 
     stages {
-
         stage('Checkout') {
             steps {
-                git credentialsId: 'github-cred',
+                echo "Checking out project from GitHub..."
+                git branch: 'main',
                     url: 'https://github.com/jryyy007/devsecops-demo.git',
-                    branch: 'main'
+                    credentialsId: 'github-cred'
             }
         }
 
         stage('Build with Maven') {
             steps {
+                echo "Building the project using Maven..."
                 withMaven(maven: 'MAVEN3') {
                     sh 'mvn clean package'
                 }
@@ -45,22 +49,22 @@ pipeline {
 
         stage('SonarQube Analysis') {
             steps {
-                withSonarQubeEnv("${SONARQUBE}") {
-                    sh "mvn sonar:sonar -Dsonar.login=${SONAR_TOKEN}"
+                echo "Running SonarQube scan..."
+                withSonarQubeEnv('sonar-server') {
+                    sh """
+                    sonar-scanner \
+                      -Dsonar.projectKey=myapp \
+                      -Dsonar.sources=src \
+                      -Dsonar.host.url=${SONAR_URL} \
+                      -Dsonar.login=${SONAR_TOKEN}
+                    """
                 }
-            }
-        }
-
-        stage('Build Docker Image') {
-            steps {
-                sh """
-                docker build -t ${DOCKER_IMAGE} .
-                """
             }
         }
 
         stage('Upload Artifact to Nexus') {
             steps {
+                echo "Uploading JAR artifact to Nexus..."
                 nexusArtifactUploader(
                     nexusVersion: 'nexus3',
                     protocol: 'http',
@@ -68,9 +72,9 @@ pipeline {
                     credentialsId: "${NEXUS_CREDENTIALS}",
                     repository: "${NEXUS_REPO}",
                     artifacts: [[
-                        groupId: 'com.example',                  // must match pom.xml
-                        artifactId: 'myapp',
-                        version: '1.0-SNAPSHOT',
+                        groupId: 'com.example',              // matches pom.xml
+                        artifactId: 'myapp',                 // matches pom.xml
+                        version: '1.0-SNAPSHOT',             // matches pom.xml
                         classifier: '',
                         file: 'target/myapp-1.0-SNAPSHOT.jar',
                         type: 'jar'
@@ -78,21 +82,41 @@ pipeline {
                 )
             }
         }
+
+        stage('Build Docker Image') {
+            steps {
+                echo "Building Docker image..."
+                sh """
+                docker build -t ${DOCKER_IMAGE_NAME}:${DOCKER_TAG} .
+                """
+            }
+        }
+
+        stage('Push Docker Image (Optional Local Registry)') {
+            steps {
+                echo "Pushing Docker image to local registry (if exists)..."
+                // For local testing, optional
+                // sh "docker tag ${DOCKER_IMAGE_NAME}:${DOCKER_TAG} localhost:5000/${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
+                // sh "docker push localhost:5000/${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
+            }
+        }
+
     }
 
     post {
         success {
-            mail to: "${EMAIL_TO}",
-                 from: "${EMAIL_FROM}",
-                 subject: "SUCCESS: Build #${env.BUILD_NUMBER}",
-                 body: "Build #${env.BUILD_NUMBER} SUCCESSFUL!\nCheck console output at ${env.BUILD_URL}"
+            echo "Build succeeded! Sending notification email..."
+            mail bcc: '', body: """Project ${env.JOB_NAME} build #${env.BUILD_NUMBER} SUCCESS
+            Check console output at ${env.BUILD_URL}""",
+            cc: '', from: '', replyTo: '', subject: "SUCCESS: Build #${env.BUILD_NUMBER}",
+            to: "${EMAIL_RECIPIENTS}"
         }
-
         failure {
-            mail to: "${EMAIL_TO}",
-                 from: "${EMAIL_FROM}",
-                 subject: "FAILURE: Build #${env.BUILD_NUMBER}",
-                 body: "Build #${env.BUILD_NUMBER} FAILED!\nCheck console output at ${env.BUILD_URL}"
+            echo "Build failed! Sending notification email..."
+            mail bcc: '', body: """Project ${env.JOB_NAME} build #${env.BUILD_NUMBER} FAILED
+            Check console output at ${env.BUILD_URL}""",
+            cc: '', from: '', replyTo: '', subject: "FAILURE: Build #${env.BUILD_NUMBER}",
+            to: "${EMAIL_RECIPIENTS}"
         }
     }
 }
