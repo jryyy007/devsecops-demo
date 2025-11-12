@@ -1,47 +1,34 @@
-// Jenkinsfile for DevSecOps Demo Project
-// Author: You
-// Purpose: CI/CD pipeline with Maven, Nexus, SonarQube, Docker, and Email notifications
-
 pipeline {
     agent any
 
+    // Global environment variables (set in Jenkins Configure System → Global properties)
     environment {
-        // Define all credentials stored in Jenkins
-        NEXUS_CREDENTIALS = 'nexus-login'
-        NEXUS_URL = 'http://localhost:8081'
-        NEXUS_REPO = 'vprofile-release'
-
-        SONAR_TOKEN = 'sonar-token'
-        SONAR_URL = 'http://localhost:9000'
-
-        EMAIL_CREDENTIALS = 'mail-cred'
-        EMAIL_RECIPIENTS = 'jridim64@gmail.com'
-
-        DOCKER_IMAGE_NAME = 'myapp-demo'
-        DOCKER_TAG = 'latest'
+        NEXUS_URL = "${NEXUS_URL}"
+        NEXUS_CREDENTIALS = "${NEXUS_CREDENTIALS}"
+        NEXUS_REPO = "${NEXUS_REPO}"
+        SONAR_TOKEN = "${SONAR_TOKEN}"
+        EMAIL_CREDENTIALS = "${EMAIL_CREDENTIALS}"
+        GITHUB_CREDENTIALS = "${GITHUB_CREDENTIALS}"
     }
 
     options {
-        // Keep build history short for local VM
+        timestamps()           // adds timestamps to console output
         buildDiscarder(logRotator(numToKeepStr: '10'))
-        // Abort builds that take too long
-        timeout(time: 30, unit: 'MINUTES')
     }
 
     stages {
+
         stage('Checkout') {
             steps {
-                echo "Checking out project from GitHub..."
                 git branch: 'main',
                     url: 'https://github.com/jryyy007/devsecops-demo.git',
-                    credentialsId: 'github-cred'
+                    credentialsId: "${GITHUB_CREDENTIALS}"
             }
         }
 
-        stage('Build with Maven') {
+        stage('Build') {
             steps {
-                echo "Building the project using Maven..."
-                withMaven(maven: 'MAVEN3') {
+                withMaven(maven: 'M3') { // 'M3' = Maven installation configured in Jenkins
                     sh 'mvn clean package'
                 }
             }
@@ -49,74 +36,63 @@ pipeline {
 
         stage('SonarQube Analysis') {
             steps {
-                echo "Running SonarQube scan..."
-                withSonarQubeEnv('sonar-server') {
-                    sh """
-                    sonar-scanner \
-                      -Dsonar.projectKey=myapp \
-                      -Dsonar.sources=src \
-                      -Dsonar.host.url=${SONAR_URL} \
-                      -Dsonar.login=${SONAR_TOKEN}
-                    """
+                withSonarQubeEnv('SonarQube') { // 'SonarQube' = Sonar server configured in Jenkins
+                    sh "mvn sonar:sonar -Dsonar.login=${SONAR_TOKEN}"
                 }
             }
         }
 
-        stage('Upload Artifact to Nexus') {
+        stage('Upload to Nexus') {
             steps {
-                echo "Uploading JAR artifact to Nexus..."
                 nexusArtifactUploader(
                     nexusVersion: 'nexus3',
                     protocol: 'http',
                     nexusUrl: "${NEXUS_URL}",
                     credentialsId: "${NEXUS_CREDENTIALS}",
                     repository: "${NEXUS_REPO}",
-                    artifacts: [[
-                        groupId: 'com.example',              // matches pom.xml
-                        artifactId: 'myapp',                 // matches pom.xml
-                        version: '1.0-SNAPSHOT',             // matches pom.xml
-                        classifier: '',
-                        file: 'target/myapp-1.0-SNAPSHOT.jar',
-                        type: 'jar'
-                    ]]
+                    groupId: 'com.example',
+                    artifactId: 'myapp',
+                    version: '1.0-SNAPSHOT',
+                    type: 'jar',
+                    file: 'target/myapp-1.0-SNAPSHOT.jar'
                 )
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                echo "Building Docker image..."
-                sh """
-                docker build -t ${DOCKER_IMAGE_NAME}:${DOCKER_TAG} .
-                """
+                script {
+                    docker.build("myapp:1.0", ".")
+                }
             }
         }
 
-        stage('Push Docker Image (Optional Local Registry)') {
+        stage('Email Notification') {
             steps {
-                echo "Pushing Docker image to local registry (if exists)..."
-                // For local testing, optional
-                // sh "docker tag ${DOCKER_IMAGE_NAME}:${DOCKER_TAG} localhost:5000/${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
-                // sh "docker push localhost:5000/${DOCKER_IMAGE_NAME}:${DOCKER_TAG}"
+                emailext(
+                    to: 'jridim64@gmail.com',
+                    subject: "${PROJECT_NAME} - Build # ${BUILD_NUMBER} - ${BUILD_STATUS}",
+                    body: """Build completed for ${PROJECT_NAME}.
+                        Check console output at ${BUILD_URL} to view details.""",
+                    recipientProviders: [[$class: 'DevelopersRecipientProvider']],
+                    from: 'jridim64@gmail.com',
+                    replyTo: 'jridim64@gmail.com',
+                    smtpHost: 'smtp.gmail.com',
+                    smtpPort: '587',
+                    useSsl: false,
+                    useTls: true,
+                    credentialsId: "${EMAIL_CREDENTIALS}"
+                )
             }
         }
-
     }
 
     post {
         success {
-            echo "Build succeeded! Sending notification email..."
-            mail bcc: '', body: """Project ${env.JOB_NAME} build #${env.BUILD_NUMBER} SUCCESS
-            Check console output at ${env.BUILD_URL}""",
-            cc: '', from: '', replyTo: '', subject: "SUCCESS: Build #${env.BUILD_NUMBER}",
-            to: "${EMAIL_RECIPIENTS}"
+            echo 'Build, analysis, and deployment completed successfully!'
         }
         failure {
-            echo "Build failed! Sending notification email..."
-            mail bcc: '', body: """Project ${env.JOB_NAME} build #${env.BUILD_NUMBER} FAILED
-            Check console output at ${env.BUILD_URL}""",
-            cc: '', from: '', replyTo: '', subject: "FAILURE: Build #${env.BUILD_NUMBER}",
-            to: "${EMAIL_RECIPIENTS}"
+            echo 'Build failed! Check console output.'
         }
     }
 }
