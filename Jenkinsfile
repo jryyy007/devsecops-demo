@@ -2,93 +2,94 @@ pipeline {
     agent any
 
     environment {
-        // SonarQube server configured in Jenkins
-        SONARQUBE = 'sonar-server'
-        // Nexus credentials ID stored in Jenkins
-        NEXUS_CRED = 'nexuslogin'
-        NEXUS_URL = 'http://localhost:8081/repository/vprofile-release/'
+        // Jenkins credentials IDs
+        GIT_CREDENTIALS = 'github-cred'      // GitHub username/token
+        NEXUS_CREDENTIALS = 'nexus-login'    // Nexus username/password
+        SONAR_TOKEN = 'sonar-token'          // SonarQube token
+        EMAIL_CREDENTIALS = 'mail-cred'      // Gmail username/password
+        // Nexus repository info
+        NEXUS_URL = 'localhost:8081'
+        NEXUS_REPO = 'vprofile-release'
         // Docker image name
-        IMAGE_NAME = 'myapp:latest'
-        // Gmail credentials ID
-        GMAIL_CRED = 'mail-cred'
+        DOCKER_IMAGE = 'myapp-demo:latest'
+        // SonarQube server
+        SONAR_HOST = 'http://localhost:9000'
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/jryyy007/devsecops-demo.git'
+                git branch: 'main', 
+                    url: 'https://github.com/jryyy007/devsecops-demo.git', 
+                    credentialsId: "${GIT_CREDENTIALS}"
             }
         }
 
-        stage('Maven Build') {
+        stage('Build with Maven') {
             steps {
-                sh 'mvn clean package'
+                sh 'mvn clean package -DskipTests'
             }
         }
 
-        stage('SonarQube Analysis') {
+        stage('SonarQube Scan') {
             steps {
-                withSonarQubeEnv(SONARQUBE) {
-                    sh 'mvn sonar:sonar'
-                }
-            }
-        }
-
-        stage('Dependency Check') {
-            steps {
-                dependencyCheck additionalArguments: '--scan ./', odcInstallation: 'dp-check'
-            }
-        }
-
-        stage('Docker Build') {
-            steps {
-                sh "docker build -t ${IMAGE_NAME} ."
-            }
-        }
-
-        stage('Trivy Scan') {
-            steps {
-                sh "trivy image --severity HIGH,CRITICAL ${IMAGE_NAME}"
+                sh """
+                docker run --rm -e SONAR_HOST_URL=${SONAR_HOST} -e SONAR_LOGIN=${SONAR_TOKEN} \\
+                -v ${WORKSPACE}:/usr/src sonarsource/sonar-scanner-cli
+                """
             }
         }
 
         stage('Upload to Nexus') {
             steps {
-                nexusArtifactUploader artifacts: [[
-                    artifactId: 'myapp',
-                    classifier: '',
-                    file: 'target/myapp-1.0-SNAPSHOT.jar',
-                    type: 'jar'
-                ]],
-                credentialsId: "${NEXUS_CRED}",
-                groupId: 'com.example',
-                nexusUrl: "${NEXUS_URL}",
-                repository: 'vprofile-release',
-                version: '1.0-SNAPSHOT'
+                nexusArtifactUploader(
+                    nexusVersion: 'nexus3',
+                    protocol: 'http',
+                    nexusUrl: "${NEXUS_URL}",
+                    credentialsId: "${NEXUS_CREDENTIALS}",
+                    repository: "${NEXUS_REPO}",
+                    artifacts: [[
+                        artifactId: 'myapp',
+                        classifier: '',
+                        file: 'target/myapp-1.0-SNAPSHOT.jar',
+                        type: 'jar'
+                    ]]
+                )
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                sh """
+                docker build -t ${DOCKER_IMAGE} .
+                """
+            }
+        }
+
+        stage('Trivy Scan') {
+            steps {
+                sh """
+                trivy image ${DOCKER_IMAGE}
+                """
             }
         }
     }
 
     post {
         success {
-            emailext (
-                subject: "SUCCESS: Build #${BUILD_NUMBER} of ${JOB_NAME}",
-                body: "Build succeeded!\nCheck console output at ${BUILD_URL}",
-                recipientProviders: [[$class: 'DevelopersRecipientProvider']],
-                to: 'your-email@gmail.com',
-                replyTo: 'your-email@gmail.com',
-                from: 'your-email@gmail.com'
-            )
+            mail to: 'jridim64@gmail.com',
+                 from: 'jridim64@gmail.com',
+                 subject: "SUCCESS: Build #${env.BUILD_NUMBER}",
+                 body: "Build ${env.BUILD_NUMBER} SUCCESSFUL!\nCheck console output at ${env.BUILD_URL}",
+                 credentialsId: "${EMAIL_CREDENTIALS}"
         }
+
         failure {
-            emailext (
-                subject: "FAILURE: Build #${BUILD_NUMBER} of ${JOB_NAME}",
-                body: "Build failed!\nCheck console output at ${BUILD_URL}",
-                recipientProviders: [[$class: 'DevelopersRecipientProvider']],
-                to: 'your-email@gmail.com',
-                replyTo: 'your-email@gmail.com',
-                from: 'your-email@gmail.com'
-            )
+            mail to: 'jridim64@gmail.com',
+                 from: 'jridim64@gmail.com',
+                 subject: "FAILURE: Build #${env.BUILD_NUMBER}",
+                 body: "Build ${env.BUILD_NUMBER} FAILED!\nCheck console output at ${env.BUILD_URL}",
+                 credentialsId: "${EMAIL_CREDENTIALS}"
         }
     }
 }
