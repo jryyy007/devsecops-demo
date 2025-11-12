@@ -1,43 +1,47 @@
 pipeline {
     agent any
 
-    // Global environment variables (set in Jenkins Configure System → Global properties)
     environment {
-        NEXUS_URL = "${NEXUS_URL}"
-        NEXUS_CREDENTIALS = "${NEXUS_CREDENTIALS}"
-        NEXUS_REPO = "${NEXUS_REPO}"
-        SONAR_TOKEN = "${SONAR_TOKEN}"
-        EMAIL_CREDENTIALS = "${EMAIL_CREDENTIALS}"
-        GITHUB_CREDENTIALS = "${GITHUB_CREDENTIALS}"
+        // Jenkins Global Variables (Configure in Manage Jenkins -> Configure System)
+        NEXUS_URL = 'http://localhost:8081'
+        NEXUS_CREDENTIALS = 'nexus-login'
+        NEXUS_REPO = 'maven-releases'
+        SONAR_TOKEN = 'sonar-token'
+        PROJECT_NAME = 'myapp'
     }
 
-    options {
-        timestamps()           // adds timestamps to console output
-        buildDiscarder(logRotator(numToKeepStr: '10'))
+    tools {
+        // Maven version configured in Jenkins
+        maven 'Maven3'
+        // Java version configured in Jenkins
+        jdk 'Java21'
     }
 
     stages {
 
         stage('Checkout') {
             steps {
-                git branch: 'main',
-                    url: 'https://github.com/jryyy007/devsecops-demo.git',
-                    credentialsId: "${GITHUB_CREDENTIALS}"
+                git branch: 'main', url: 'https://github.com/jryyy007/devsecops-demo.git',
+                    credentialsId: 'github-cred'
             }
         }
 
         stage('Build') {
             steps {
-                withMaven(maven: 'M3') { // 'M3' = Maven installation configured in Jenkins
+                script {
                     sh 'mvn clean package'
                 }
             }
         }
 
         stage('SonarQube Analysis') {
+            environment {
+                SONAR_HOST_URL = 'http://localhost:9000'
+                SONAR_LOGIN = "${SONAR_TOKEN}"
+            }
             steps {
-                withSonarQubeEnv('SonarQube') { // 'SonarQube' = Sonar server configured in Jenkins
-                    sh "mvn sonar:sonar -Dsonar.login=${SONAR_TOKEN}"
+                script {
+                    sh "mvn sonar:sonar -Dsonar.projectKey=${PROJECT_NAME} -Dsonar.host.url=${SONAR_HOST_URL} -Dsonar.login=${SONAR_LOGIN}"
                 }
             }
         }
@@ -50,11 +54,13 @@ pipeline {
                     nexusUrl: "${NEXUS_URL}",
                     credentialsId: "${NEXUS_CREDENTIALS}",
                     repository: "${NEXUS_REPO}",
-                    groupId: 'com.example',
-                    artifactId: 'myapp',
-                    version: '1.0-SNAPSHOT',
-                    type: 'jar',
-                    file: 'target/myapp-1.0-SNAPSHOT.jar'
+                    artifacts: [[
+                        groupId: 'com.example',
+                        artifactId: 'myapp',
+                        version: '1.0-SNAPSHOT',
+                        type: 'jar',
+                        file: 'target/myapp-1.0-SNAPSHOT.jar'
+                    ]]
                 )
             }
         }
@@ -62,37 +68,35 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    docker.build("myapp:1.0", ".")
+                    sh "docker build -t myapp:latest ."
                 }
             }
         }
 
-        stage('Email Notification') {
+        stage('Publish Docker Image (Optional)') {
             steps {
-                emailext(
-                    to: 'jridim64@gmail.com',
-                    subject: "${PROJECT_NAME} - Build # ${BUILD_NUMBER} - ${BUILD_STATUS}",
-                    body: """Build completed for ${PROJECT_NAME}.
-                        Check console output at ${BUILD_URL} to view details.""",
-                    recipientProviders: [[$class: 'DevelopersRecipientProvider']],
-                    from: 'jridim64@gmail.com',
-                    replyTo: 'jridim64@gmail.com',
-                    smtpHost: 'smtp.gmail.com',
-                    smtpPort: '587',
-                    useSsl: false,
-                    useTls: true,
-                    credentialsId: "${EMAIL_CREDENTIALS}"
-                )
+                echo 'If you want, push to local Docker registry or Docker Hub here'
             }
         }
     }
 
     post {
         success {
-            echo 'Build, analysis, and deployment completed successfully!'
+            emailext(
+                to: 'jridim64@gmail.com',
+                subject: "${PROJECT_NAME} - Build # ${BUILD_NUMBER} - SUCCESS",
+                body: """Build SUCCESSFUL for ${PROJECT_NAME}.
+Check console output at ${BUILD_URL}."""
+            )
         }
         failure {
-            echo 'Build failed! Check console output.'
+            emailext(
+                to: 'jridim64@gmail.com',
+                subject: "${PROJECT_NAME} - Build # ${BUILD_NUMBER} - FAILURE",
+                body: """Build FAILED for ${PROJECT_NAME}.
+Check console output at ${BUILD_URL}."""
+            )
         }
     }
 }
+
