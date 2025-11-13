@@ -8,6 +8,7 @@ pipeline {
         NEXUS_REPO = 'maven-releases'
         SONAR_TOKEN = credentials('sonar-token')
         PROJECT_NAME = 'myapp'
+	PROJECT_VERSION = '1.0-SNAPSHOT'
     }
 
     tools {
@@ -46,25 +47,32 @@ pipeline {
 }
 
 
-        stage('Upload to Nexus') {
+	stage('Upload to Nexus') {
     steps {
-        nexusArtifactUploader(
-            nexusVersion: 'nexus3',
-            protocol: 'http',
-            nexusUrl: "${NEXUS_URL}",
-            groupId: 'com.example',          // Moved to top level
-            version: '1.0-SNAPSHOT',         // Moved to top level (but see note below on snapshots)
-            repository: "${NEXUS_REPO}",
-            credentialsId: "${NEXUS_CREDENTIALS}",
-            artifacts: [
-                [artifactId: 'myapp',
-                 type: 'jar',
-                 classifier: '',             // Optional; empty if no classifier
-                 file: 'target/myapp-1.0-SNAPSHOT.jar']
-            ]
-        )
+        script {
+            def repo = 'maven-releases' // default release
+            if (env.PROJECT_VERSION?.endsWith('-SNAPSHOT')) {
+                repo = 'maven-snapshots'
+            }
+            nexusArtifactUploader(
+                nexusVersion: 'nexus3',
+                protocol: 'http',
+                nexusUrl: "${NEXUS_URL}",
+                groupId: 'com.example',
+                version: "${env.PROJECT_VERSION}",
+                repository: repo,
+                credentialsId: "${NEXUS_CREDENTIALS}",
+                artifacts: [
+                    [artifactId: 'myapp',
+                     type: 'jar',
+                     classifier: '',
+                     file: "target/myapp-${env.PROJECT_VERSION}.jar"]
+                ]
+            )
+        }
     }
 }
+
 
         stage('Build Docker Image') {
             steps {
