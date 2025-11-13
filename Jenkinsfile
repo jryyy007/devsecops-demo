@@ -35,16 +35,16 @@ pipeline {
         }
 
         stage('SonarQube Analysis') {
-            environment {
-                SONAR_HOST_URL = 'http://localhost:9000/'
-                SONAR_LOGIN = "${SONAR_TOKEN}"
-            }
-            steps {
-                script {
-                    sh "mvn sonar:sonar -Dsonar.projectKey=${PROJECT_NAME} -Dsonar.host.url=${SONAR_HOST_URL} -Dsonar.login=${SONAR_TOKEN}"
-                }
-            }
+    environment {
+        SONAR_HOST_URL = 'http://localhost:9000'
+    }
+    steps {
+        script {
+            sh "mvn sonar:sonar -Dsonar.projectKey=${PROJECT_NAME} -Dsonar.host.url=${SONAR_HOST_URL} -Dsonar.login=${SONAR_TOKEN}"
         }
+    }
+}
+
 
         stage('Upload to Nexus') {
     steps {
