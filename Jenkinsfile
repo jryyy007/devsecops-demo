@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         // Jenkins Global Variables (Configure in Manage Jenkins -> Configure System)
-        NEXUS_URL = 'http://localhost:8081'
+        NEXUS_URL = 'localhost:8081'
         NEXUS_CREDENTIALS = 'nexus-login'
         NEXUS_REPO = 'maven-releases'
         SONAR_TOKEN = credentials('sonar-token')
