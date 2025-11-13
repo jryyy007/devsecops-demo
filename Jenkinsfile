@@ -47,23 +47,24 @@ pipeline {
         }
 
         stage('Upload to Nexus') {
-            steps {
-                nexusArtifactUploader(
-                    nexusVersion: 'nexus3',
-                    protocol: 'http',
-                    nexusUrl: "${NEXUS_URL}",
-                    credentialsId: "${NEXUS_CREDENTIALS}",
-                    repository: "${NEXUS_REPO}",
-                    artifacts: [[
-                        groupId: 'com.example',
-                        artifactId: 'myapp',
-                        version: '1.0-SNAPSHOT',
-                        type: 'jar',
-                        file: 'target/myapp-1.0-SNAPSHOT.jar'
-                    ]]
-                )
-            }
-        }
+    steps {
+        nexusArtifactUploader(
+            nexusVersion: 'nexus3',
+            protocol: 'http',
+            nexusUrl: "${NEXUS_URL}",
+            groupId: 'com.example',          // Moved to top level
+            version: '1.0-SNAPSHOT',         // Moved to top level (but see note below on snapshots)
+            repository: "${NEXUS_REPO}",
+            credentialsId: "${NEXUS_CREDENTIALS}",
+            artifacts: [
+                [artifactId: 'myapp',
+                 type: 'jar',
+                 classifier: '',             // Optional; empty if no classifier
+                 file: 'target/myapp-1.0-SNAPSHOT.jar']
+            ]
+        )
+    }
+}
 
         stage('Build Docker Image') {
             steps {
