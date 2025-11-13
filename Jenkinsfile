@@ -14,7 +14,9 @@ pipeline {
     }
 
     tools {
+        // Maven version configured in Jenkins
         maven 'MAVEN3'
+        // Java version configured in Jenkins
         jdk 'JDK21'
     }
 
@@ -81,44 +83,44 @@ pipeline {
         }
 
         stage('ZAP Scan') {
-    steps {
-        script {
-            echo 'Starting ZAP scan using existing container...'
-
-            // Wait a few seconds to ensure ZAP is ready
-            sh 'sleep 10'
-
-            // Run the scan from inside the existing daemonized ZAP container
-            sh '''
-                docker exec zap-container zap.sh -cmd \
-                    -quickurl http://localhost:8080 \
-                    -quickout /zap/wrk/zap-report.html
-            '''
-
-            // Copy the generated report from the container to Jenkins workspace
-            sh 'docker cp zap-container:/zap/wrk/zap-report.html ./zap-report.html'
-
-            // Publish the report as an artifact
-            archiveArtifacts artifacts: 'zap-report.html', fingerprint: true
-        }
-    }
-}
-
-
-        stage('Trivy Scan') {
             steps {
                 script {
-                    sh "trivy image --exit-code 1 --severity HIGH,CRITICAL myapp:latest || true"
+                    echo 'Starting ZAP scan using existing container...'
+
+                    // Wait for ZAP daemon to be ready
+                    sh 'sleep 10'
+
+                    // Run scan inside the persistent ZAP container
+                    sh '''
+                        docker exec zap-container zap.sh -cmd \
+                            -quickurl http://localhost:8080 \
+                            -quickout /zap/wrk/zap-report.html
+                    '''
+
+                    // Copy the generated report from the container to Jenkins workspace
+                    sh 'docker cp zap-container:/zap/wrk/zap-report.html ./zap-report.html'
+
+                    // Publish the report as an artifact
+                    archiveArtifacts artifacts: 'zap-report.html', fingerprint: true
                 }
             }
         }
 
-      
+        stage('Trivy Scan') {
+            steps {
+                script {
+                    // Scan the Docker image for vulnerabilities
+                    sh "trivy image --exit-code 1 --severity HIGH,CRITICAL myapp:latest || true"
+                }
+            }
+        }
+    }
+
     post {
         success {
             emailext(
                 to: 'jridim64@gmail.com',
-                subject: "${PROJECT_NAME} - Build # ${BUILD_NUMBER} - SUCCESS",
+                subject: "${PROJECT_NAME} - Build #${BUILD_NUMBER} - SUCCESS",
                 body: """Build SUCCESSFUL for ${PROJECT_NAME}.
 Check console output at ${BUILD_URL}.
 ZAP report archived: ${BUILD_URL}artifact/zap-report.html"""
@@ -127,11 +129,10 @@ ZAP report archived: ${BUILD_URL}artifact/zap-report.html"""
         failure {
             emailext(
                 to: 'jridim64@gmail.com',
-                subject: "${PROJECT_NAME} - Build # ${BUILD_NUMBER} - FAILURE",
+                subject: "${PROJECT_NAME} - Build #${BUILD_NUMBER} - FAILURE",
                 body: """Build FAILED for ${PROJECT_NAME}.
 Check console output at ${BUILD_URL}."""
             )
         }
     }
-}
 }
