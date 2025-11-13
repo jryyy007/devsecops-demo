@@ -115,11 +115,15 @@ pipeline {
 stage('Publish Docker Image') {
     steps {
         script {
-            sh """
-                echo $DOCKERHUB_PASSWORD | docker login -u $DOCKERHUB_USERNAME --password-stdin
-                docker tag ${PROJECT_NAME}:latest $DOCKERHUB_USERNAME/${PROJECT_NAME}:latest
-                docker push $DOCKERHUB_USERNAME/${PROJECT_NAME}:latest
-            """
+            withCredentials([usernamePassword(credentialsId: 'dockerhub-cred',
+                                             usernameVariable: 'DOCKER_USER',
+                                             passwordVariable: 'DOCKER_PASS')]) {
+                sh """
+                    echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                    docker tag ${PROJECT_NAME}:latest $DOCKER_USER/${PROJECT_NAME}:latest
+                    docker push $DOCKER_USER/${PROJECT_NAME}:latest
+                """
+            }
         }
     }
 }
