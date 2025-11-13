@@ -7,9 +7,6 @@ pipeline {
         NEXUS_CREDENTIALS = 'nexus-login'
         NEXUS_REPO = 'maven-releases'
         SONAR_TOKEN = credentials('sonar-token')
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-cred')
-	DOCKERHUB_USERNAME = "${DOCKERHUB_CREDENTIALS_USR}"
-	DOCKERHUB_PASSWORD = "${DOCKERHUB_CREDENTIALS_PSW}"
 	PROJECT_NAME = 'myapp'
         PROJECT_VERSION = '1.0-SNAPSHOT'
         ZAP_HOST = 'localhost'
@@ -112,13 +109,13 @@ pipeline {
     }
 }
 
-withCredentials([usernamePassword(
-    credentialsId: 'dockerhub-cred',
-    usernameVariable: 'DOCKER_USER',
-    passwordVariable: 'DOCKER_PASS'
-)]) {
-    stage('Publish Docker Image') {
-        steps {
+stage('Publish Docker Image') {
+    steps {
+        withCredentials([usernamePassword(
+            credentialsId: 'dockerhub-cred',
+            usernameVariable: 'DOCKER_USER',
+            passwordVariable: 'DOCKER_PASS'
+        )]) {
             sh '''
                 echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
                 docker tag ${PROJECT_NAME}:latest $DOCKER_USER/${PROJECT_NAME}:latest
@@ -126,9 +123,15 @@ withCredentials([usernamePassword(
             '''
         }
     }
+}
 
-    stage('Deploy to Docker') {
-        steps {
+stage('Deploy to Docker') {
+    steps {
+        withCredentials([usernamePassword(
+            credentialsId: 'dockerhub-cred',
+            usernameVariable: 'DOCKER_USER',
+            passwordVariable: 'DOCKER_PASS'
+        )]) {
             sh '''
                 docker ps -aq --filter "name=${PROJECT_NAME}" | xargs -r docker stop
                 docker ps -aq --filter "name=${PROJECT_NAME}" | xargs -r docker rm
@@ -138,16 +141,16 @@ withCredentials([usernamePassword(
     }
 }
 
-
+ 
         stage('Trivy Scan') {
             steps {
-                script {
+             script {
                     // Scan the Docker image for vulnerabilities
                     sh "trivy image --exit-code 1 --severity HIGH,CRITICAL myapp:latest || true"
-                }
-            }
-        }
-    }
+     }
+}
+}
+}
 
     post {
         success {
