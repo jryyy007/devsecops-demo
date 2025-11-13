@@ -8,13 +8,13 @@ pipeline {
         NEXUS_REPO = 'maven-releases'
         SONAR_TOKEN = credentials('sonar-token')
         PROJECT_NAME = 'myapp'
-	PROJECT_VERSION = '1.0-SNAPSHOT'
+        PROJECT_VERSION = '1.0-SNAPSHOT'
+        ZAP_HOST = 'localhost'
+        ZAP_PORT = '8090'
     }
 
     tools {
-        // Maven version configured in Jenkins
         maven 'MAVEN3'
-        // Java version configured in Jenkins
         jdk 'JDK21'
     }
 
@@ -36,43 +36,41 @@ pipeline {
         }
 
         stage('SonarQube Analysis') {
-    environment {
-        SONAR_HOST_URL = 'http://localhost:9000'
-    }
-    steps {
-        script {
-            sh "mvn sonar:sonar -Dsonar.projectKey=${PROJECT_NAME} -Dsonar.host.url=${SONAR_HOST_URL} -Dsonar.login=${SONAR_TOKEN}"
-        }
-    }
-}
-
-
-	stage('Upload to Nexus') {
-    steps {
-        script {
-            def repo = 'maven-releases' // default release
-            if (env.PROJECT_VERSION?.endsWith('-SNAPSHOT')) {
-                repo = 'maven-snapshots'
+            environment {
+                SONAR_HOST_URL = 'http://localhost:9000'
             }
-            nexusArtifactUploader(
-                nexusVersion: 'nexus3',
-                protocol: 'http',
-                nexusUrl: "${NEXUS_URL}",
-                groupId: 'com.example',
-                version: "${env.PROJECT_VERSION}",
-                repository: repo,
-                credentialsId: "${NEXUS_CREDENTIALS}",
-                artifacts: [
-                    [artifactId: 'myapp',
-                     type: 'jar',
-                     classifier: '',
-                     file: "target/myapp-${env.PROJECT_VERSION}.jar"]
-                ]
-            )
+            steps {
+                script {
+                    sh "mvn sonar:sonar -Dsonar.projectKey=${PROJECT_NAME} -Dsonar.host.url=${SONAR_HOST_URL} -Dsonar.login=${SONAR_TOKEN}"
+                }
+            }
         }
-    }
-}
 
+        stage('Upload to Nexus') {
+            steps {
+                script {
+                    def repo = 'maven-releases'
+                    if (env.PROJECT_VERSION?.endsWith('-SNAPSHOT')) {
+                        repo = 'maven-snapshots'
+                    }
+                    nexusArtifactUploader(
+                        nexusVersion: 'nexus3',
+                        protocol: 'http',
+                        nexusUrl: "${NEXUS_URL}",
+                        groupId: 'com.example',
+                        version: "${env.PROJECT_VERSION}",
+                        repository: repo,
+                        credentialsId: "${NEXUS_CREDENTIALS}",
+                        artifacts: [
+                            [artifactId: 'myapp',
+                             type: 'jar',
+                             classifier: '',
+                             file: "target/myapp-${env.PROJECT_VERSION}.jar"]
+                        ]
+                    )
+                }
+            }
+        }
 
         stage('Build Docker Image') {
             steps {
@@ -82,22 +80,32 @@ pipeline {
             }
         }
 
+        stage('OWASP ZAP Scan') {
+            steps {
+                script {
+                    echo "Running ZAP Security Scan..."
+                    sh """
+                        docker exec zap-container zap.sh -cmd -quickurl http://localhost:8080 -quickout zap-report.html
+                    """
+                    archiveArtifacts artifacts: 'zap-report.html', allowEmptyArchive: true
+                }
+            }
+        }
+
+        stage('Trivy Scan') {
+            steps {
+                script {
+                    sh "trivy image --exit-code 1 --severity HIGH,CRITICAL myapp:latest || true"
+                }
+            }
+        }
+
         stage('Publish Docker Image (Optional)') {
             steps {
-                echo 'If you want, push to local Docker registry or Docker Hub here'
+                echo 'Push to local Docker registry or Docker Hub if needed'
             }
         }
     }
-
-	stage('Trivy Scan') {
-    steps {
-        script {
-            // Scan the latest Docker image and fail if HIGH or CRITICAL vulnerabilities exist
-            sh "trivy image --exit-code 1 --severity HIGH,CRITICAL myapp:latest || true"
-        }
-    }
-}
-
 
     post {
         success {
@@ -105,7 +113,8 @@ pipeline {
                 to: 'jridim64@gmail.com',
                 subject: "${PROJECT_NAME} - Build # ${BUILD_NUMBER} - SUCCESS",
                 body: """Build SUCCESSFUL for ${PROJECT_NAME}.
-Check console output at ${BUILD_URL}."""
+Check console output at ${BUILD_URL}.
+ZAP report archived: ${BUILD_URL}artifact/zap-report.html"""
             )
         }
         failure {
@@ -118,4 +127,3 @@ Check console output at ${BUILD_URL}."""
         }
     }
 }
-
