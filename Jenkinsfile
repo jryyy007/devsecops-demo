@@ -80,17 +80,30 @@ pipeline {
             }
         }
 
-        stage('OWASP ZAP Scan') {
-            steps {
-                script {
-                    echo "Running ZAP Security Scan..."
-                    sh """
-                        docker exec zap-container zap.sh -cmd -quickurl http://localhost:8080 -quickout zap-report.html
-                    """
-                    archiveArtifacts artifacts: 'zap-report.html', allowEmptyArchive: true
-                }
-            }
+        stage('ZAP Scan') {
+    steps {
+        script {
+            echo 'Starting ZAP scan using existing container...'
+
+            // Wait a few seconds to ensure ZAP is ready
+            sh 'sleep 10'
+
+            // Run the scan from inside the existing daemonized ZAP container
+            sh '''
+                docker exec zap-container zap.sh -cmd \
+                    -quickurl http://localhost:8080 \
+                    -quickout /zap/wrk/zap-report.html
+            '''
+
+            // Copy the generated report from the container to Jenkins workspace
+            sh 'docker cp zap-container:/zap/wrk/zap-report.html ./zap-report.html'
+
+            // Publish the report as an artifact
+            archiveArtifacts artifacts: 'zap-report.html', fingerprint: true
         }
+    }
+}
+
 
         stage('Trivy Scan') {
             steps {
@@ -100,13 +113,7 @@ pipeline {
             }
         }
 
-        stage('Publish Docker Image (Optional)') {
-            steps {
-                echo 'Push to local Docker registry or Docker Hub if needed'
-            }
-        }
-    }
-
+      
     post {
         success {
             emailext(
