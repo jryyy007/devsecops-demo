@@ -131,15 +131,14 @@ stage('Publish Docker Image') {
 stage('Deploy to Docker') {
     steps {
         script {
-            sh """
-                docker stop ${PROJECT_NAME} || true
-                docker rm ${PROJECT_NAME} || true
-                docker run -d --name ${PROJECT_NAME} -p 0:8080 $DOCKERHUB_USERNAME/${PROJECT_NAME}:latest
-            """
+            sh '''
+                docker ps -aq --filter "name=${PROJECT_NAME}" | xargs -r docker stop
+                docker ps -aq --filter "name=${PROJECT_NAME}" | xargs -r docker rm
+                docker run -d --name ${PROJECT_NAME} -p 0:8080 $DOCKER_USER/${PROJECT_NAME}:latest 
+            '''
         }
     }
 }
-
 
 
         stage('Trivy Scan') {
