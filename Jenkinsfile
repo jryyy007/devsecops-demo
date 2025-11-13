@@ -134,7 +134,7 @@ stage('Deploy to Docker') {
             sh """
                 docker stop ${PROJECT_NAME} || true
                 docker rm ${PROJECT_NAME} || true
-                docker run -d --name ${PROJECT_NAME} -p 8081:8080 $DOCKERHUB_USERNAME/${PROJECT_NAME}:latest
+                docker run -d --name ${PROJECT_NAME} -p 0:8080 $DOCKERHUB_USERNAME/${PROJECT_NAME}:latest
             """
         }
     }
