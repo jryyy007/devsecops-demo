@@ -83,28 +83,31 @@ pipeline {
         }
 
         stage('ZAP Scan') {
-            steps {
-                script {
-                    echo 'Starting ZAP scan using existing container...'
+    steps {
+        script {
+            echo 'Starting ZAP scan using running container...'
 
-                    // Wait for ZAP daemon to be ready
-                    sh 'sleep 10'
+            // Wait for ZAP daemon to be ready
+            sh 'sleep 10'
 
-                    // Run scan inside the persistent ZAP container
-                    sh '''
-                        docker exec zap-container zap.sh -cmd \
-                            -quickurl http://localhost:8080 \
-                            -quickout /zap/wrk/zap-report.html
-                    '''
+            // Trigger the quick scan through ZAP's REST API
+            sh '''
+                curl "http://localhost:8090/JSON/ascan/action/scan/?url=http://localhost:8080"
+                
+                # Wait for scan completion
+                echo "Waiting for ZAP scan to finish..."
+                sleep 60
 
-                    // Copy the generated report from the container to Jenkins workspace
-                    sh 'docker cp zap-container:/zap/wrk/zap-report.html ./zap-report.html'
+                # Generate the HTML report through the API
+                curl "http://localhost:8090/OTHER/core/other/htmlreport/" -o zap-report.html
+            '''
 
-                    // Publish the report as an artifact
-                    archiveArtifacts artifacts: 'zap-report.html', fingerprint: true
-                }
-            }
+            // Archive the report for Jenkins
+            archiveArtifacts artifacts: 'zap-report.html', fingerprint: true
         }
+    }
+}
+
 
         stage('Trivy Scan') {
             steps {
