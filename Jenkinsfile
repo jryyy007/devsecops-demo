@@ -7,10 +7,14 @@ pipeline {
         NEXUS_CREDENTIALS = 'nexus-login'
         NEXUS_REPO = 'maven-releases'
         SONAR_TOKEN = credentials('sonar-token')
-        PROJECT_NAME = 'myapp'
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-cred')
+    	DOCKERHUB_USERNAME = "${DOCKERHUB_CREDENTIALS_USR}"
+    	DOCKERHUB_PASSWORD = "${DOCKERHUB_CREDENTIALS_PSW}"
+	PROJECT_NAME = 'myapp'
         PROJECT_VERSION = '1.0-SNAPSHOT'
         ZAP_HOST = 'localhost'
         ZAP_PORT = '8090'
+	
     }
 
     tools {
@@ -107,6 +111,32 @@ pipeline {
         }
     }
 }
+
+stage('Publish Docker Image') {
+    steps {
+        script {
+            sh """
+                echo $DOCKERHUB_PASSWORD | docker login -u $DOCKERHUB_USERNAME --password-stdin
+                docker tag ${PROJECT_NAME}:latest $DOCKERHUB_USERNAME/${PROJECT_NAME}:latest
+                docker push $DOCKERHUB_USERNAME/${PROJECT_NAME}:latest
+            """
+        }
+    }
+}
+
+
+stage('Deploy to Docker') {
+    steps {
+        script {
+            sh """
+                docker stop ${PROJECT_NAME} || true
+                docker rm ${PROJECT_NAME} || true
+                docker run -d --name ${PROJECT_NAME} -p 8081:8080 $DOCKERHUB_USERNAME/${PROJECT_NAME}:latest
+            """
+        }
+    }
+}
+
 
 
         stage('Trivy Scan') {
