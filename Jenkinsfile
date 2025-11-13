@@ -89,6 +89,16 @@ pipeline {
         }
     }
 
+	stage('Trivy Scan') {
+    steps {
+        script {
+            // Scan the latest Docker image and fail if HIGH or CRITICAL vulnerabilities exist
+            sh "trivy image --exit-code 1 --severity HIGH,CRITICAL myapp:latest || true"
+        }
+    }
+}
+
+
     post {
         success {
             emailext(
