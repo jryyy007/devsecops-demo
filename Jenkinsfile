@@ -112,30 +112,28 @@ pipeline {
     }
 }
 
-stage('Publish Docker Image') {
-    steps {
-        withCredentials([usernamePassword(
-            credentialsId: 'dockerhub-cred',
-            usernameVariable: 'DOCKER_USER',
-            passwordVariable: 'DOCKER_PASS'
-        )]) {
-            sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
-            sh "docker tag ${PROJECT_NAME}:latest $DOCKER_USER/${PROJECT_NAME}:latest"
-            sh "docker push $DOCKER_USER/${PROJECT_NAME}:latest"
+withCredentials([usernamePassword(
+    credentialsId: 'dockerhub-cred',
+    usernameVariable: 'DOCKER_USER',
+    passwordVariable: 'DOCKER_PASS'
+)]) {
+    stage('Publish Docker Image') {
+        steps {
+            sh '''
+                echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                docker tag ${PROJECT_NAME}:latest $DOCKER_USER/${PROJECT_NAME}:latest
+                docker push $DOCKER_USER/${PROJECT_NAME}:latest
+            '''
         }
     }
-}
 
-
-
-stage('Deploy to Docker') {
-    steps {
-        script {
-            sh """
+    stage('Deploy to Docker') {
+        steps {
+            sh '''
                 docker ps -aq --filter "name=${PROJECT_NAME}" | xargs -r docker stop
                 docker ps -aq --filter "name=${PROJECT_NAME}" | xargs -r docker rm
-                docker run -d --name ${PROJECT_NAME} -p 8082:8080 $DOCKER_USER/${PROJECT_NAME}:latest 
-            """
+                docker run -d --name ${PROJECT_NAME} -p 8082:8080 $DOCKER_USER/${PROJECT_NAME}:latest
+            '''
         }
     }
 }
