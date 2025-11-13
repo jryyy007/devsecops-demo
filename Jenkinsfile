@@ -8,8 +8,8 @@ pipeline {
         NEXUS_REPO = 'maven-releases'
         SONAR_TOKEN = credentials('sonar-token')
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-cred')
-    	DOCKERHUB_USERNAME = "${DOCKERHUB_CREDENTIALS_USR}"
-    	DOCKERHUB_PASSWORD = "${DOCKERHUB_CREDENTIALS_PSW}"
+	DOCKERHUB_USERNAME = "${DOCKERHUB_CREDENTIALS_USR}"
+	DOCKERHUB_PASSWORD = "${DOCKERHUB_CREDENTIALS_PSW}"
 	PROJECT_NAME = 'myapp'
         PROJECT_VERSION = '1.0-SNAPSHOT'
         ZAP_HOST = 'localhost'
@@ -114,19 +114,18 @@ pipeline {
 
 stage('Publish Docker Image') {
     steps {
-        script {
-            withCredentials([usernamePassword(credentialsId: 'dockerhub-cred',
-                                             usernameVariable: 'DOCKER_USER',
-                                             passwordVariable: 'DOCKER_PASS')]) {
-                sh """
-                    echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                    docker tag ${PROJECT_NAME}:latest $DOCKER_USER/${PROJECT_NAME}:latest
-                    docker push $DOCKER_USER/${PROJECT_NAME}:latest
-                """
-            }
+        withCredentials([usernamePassword(
+            credentialsId: 'dockerhub-cred',
+            usernameVariable: 'DOCKER_USER',
+            passwordVariable: 'DOCKER_PASS'
+        )]) {
+            sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
+            sh "docker tag ${PROJECT_NAME}:latest $DOCKER_USER/${PROJECT_NAME}:latest"
+            sh "docker push $DOCKER_USER/${PROJECT_NAME}:latest"
         }
     }
 }
+
 
 
 stage('Deploy to Docker') {
