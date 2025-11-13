@@ -6,7 +6,7 @@ pipeline {
         NEXUS_URL = 'http://localhost:8081'
         NEXUS_CREDENTIALS = 'nexus-login'
         NEXUS_REPO = 'maven-releases'
-        SONAR_TOKEN = 'sonar-token'
+        SONAR_TOKEN = credentials('sonar-token')
         PROJECT_NAME = 'myapp'
     }
 
